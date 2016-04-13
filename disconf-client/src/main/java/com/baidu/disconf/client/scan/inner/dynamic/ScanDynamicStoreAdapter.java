@@ -14,12 +14,14 @@ import com.baidu.disconf.client.common.annotations.DisconfFile;
 import com.baidu.disconf.client.common.annotations.DisconfUpdateService;
 import com.baidu.disconf.client.common.model.DisconfKey;
 import com.baidu.disconf.client.common.update.IDisconfUpdate;
+import com.baidu.disconf.client.common.update.IDisconfUpdatePipeline;
 import com.baidu.disconf.client.scan.inner.common.ScanVerify;
 import com.baidu.disconf.client.scan.inner.dynamic.model.ScanDynamicModel;
 import com.baidu.disconf.client.scan.inner.statically.model.ScanStaticModel;
+import com.baidu.disconf.client.store.DisconfStorePipelineProcessor;
 import com.baidu.disconf.client.store.DisconfStoreProcessor;
 import com.baidu.disconf.client.store.DisconfStoreProcessorFactory;
-import com.baidu.disconf.client.utils.SpringContextUtil;
+import com.baidu.disconf.client.support.registry.Registry;
 import com.baidu.disconf.core.common.constants.DisConfigTypeEnum;
 
 /**
@@ -35,13 +37,14 @@ public class ScanDynamicStoreAdapter {
     /**
      * 扫描更新回调函数
      */
-    public static void scanUpdateCallbacks(ScanStaticModel scanModel) {
+    public static void scanUpdateCallbacks(ScanStaticModel scanModel, Registry registry) {
 
         // 扫描出来
-        ScanDynamicModel scanDynamicModel = analysis4DisconfUpdate(scanModel);
+        ScanDynamicModel scanDynamicModel = analysis4DisconfUpdate(scanModel, registry);
 
         // 写到仓库中
         transformUpdateService(scanDynamicModel.getDisconfUpdateServiceInverseIndexMap());
+        transformPipelineService(scanDynamicModel.getDisconfUpdatePipeline());
     }
 
     /**
@@ -49,7 +52,7 @@ public class ScanDynamicStoreAdapter {
      * <p/>
      * 分析出更新操作的相关配置文件内容
      */
-    private static ScanDynamicModel analysis4DisconfUpdate(ScanStaticModel scanModel) {
+    private static ScanDynamicModel analysis4DisconfUpdate(ScanStaticModel scanModel, Registry registry) {
 
         // 配置项或文件
         Map<DisconfKey, List<IDisconfUpdate>> inverseMap = new HashMap<DisconfKey, List<IDisconfUpdate>>();
@@ -59,7 +62,7 @@ public class ScanDynamicStoreAdapter {
 
             // 回调对应的参数
             DisconfUpdateService disconfUpdateService =
-                disconfUpdateServiceClass.getAnnotation(DisconfUpdateService.class);
+                    disconfUpdateServiceClass.getAnnotation(DisconfUpdateService.class);
 
             //
             // 校验是否有继承正确,是否继承IDisconfUpdate
@@ -69,7 +72,7 @@ public class ScanDynamicStoreAdapter {
 
             //
             // 获取回调接口实例
-            IDisconfUpdate iDisconfUpdate = getIDisconfUpdateInstance(disconfUpdateServiceClass);
+            IDisconfUpdate iDisconfUpdate = getIDisconfUpdateInstance(disconfUpdateServiceClass, registry);
             if (iDisconfUpdate == null) {
                 continue;
             }
@@ -87,6 +90,17 @@ public class ScanDynamicStoreAdapter {
         // set data
         ScanDynamicModel scanDynamicModel = new ScanDynamicModel();
         scanDynamicModel.setDisconfUpdateServiceInverseIndexMap(inverseMap);
+
+        //
+        // set update pipeline
+        //
+        if (scanModel.getiDisconfUpdatePipeline() != null) {
+            IDisconfUpdatePipeline iDisconfUpdatePipeline = getIDisconfUpdatePipelineInstance(scanModel
+                    .getiDisconfUpdatePipeline(), registry);
+            if (iDisconfUpdatePipeline != null) {
+                scanDynamicModel.setDisconfUpdatePipeline(iDisconfUpdatePipeline);
+            }
+        }
 
         return scanDynamicModel;
     }
@@ -121,8 +135,8 @@ public class ScanDynamicStoreAdapter {
             DisconfFile disconfFile = curClass.getAnnotation(DisconfFile.class);
             if (disconfFile == null) {
 
-                LOGGER
-                    .error("cannot find DisconfFile annotation for class when set callback: {} ", curClass.toString());
+                LOGGER.error("cannot find DisconfFile annotation for class when set callback: {} ",
+                        curClass.toString());
                 continue;
             }
 
@@ -147,38 +161,31 @@ public class ScanDynamicStoreAdapter {
      * // 非Spring直接New
      * // Spring要GetBean
      * //
-     *
-     * @param disconfUpdateServiceClass
-     *
-     * @return
      */
-    private static IDisconfUpdate getIDisconfUpdateInstance(Class<?> disconfUpdateServiceClass) {
+    private static IDisconfUpdate getIDisconfUpdateInstance(Class<?> disconfUpdateServiceClass, Registry registry) {
 
-        IDisconfUpdate iDisconfUpdate = null;
-
-        //
-        // Spring方式
-        try {
-
-            iDisconfUpdate = getSpringBean(disconfUpdateServiceClass);
-
-        } catch (Exception e) {
-
-            //
-            // 非Spring方式
-            try {
-
-                iDisconfUpdate = (IDisconfUpdate) disconfUpdateServiceClass.newInstance();
-
-            } catch (Exception e2) {
-
-                LOGGER.error("Your class " + disconfUpdateServiceClass.toString() + " cannot new instance. " +
-                                 e.toString(), e);
-                return null;
-            }
+        Object iDisconfUpdate = registry.getFirstByType(disconfUpdateServiceClass, true);
+        if (iDisconfUpdate == null) {
+            return null;
         }
+        return (IDisconfUpdate) iDisconfUpdate;
 
-        return iDisconfUpdate;
+    }
+
+    /**
+     * 获取回调接口的实现
+     * //
+     */
+    private static IDisconfUpdatePipeline getIDisconfUpdatePipelineInstance(
+            Class<IDisconfUpdatePipeline> disconfUpdateServiceClass,
+            Registry registry) {
+
+        Object iDisconfUpdate = registry.getFirstByType(disconfUpdateServiceClass, true);
+        if (iDisconfUpdate == null) {
+            return null;
+        }
+        return (IDisconfUpdatePipeline) iDisconfUpdate;
+
     }
 
     /**
@@ -187,7 +194,7 @@ public class ScanDynamicStoreAdapter {
     private static void addOne2InverseMap(DisconfKey disconfKey, Map<DisconfKey, List<IDisconfUpdate>> inverseMap,
                                           IDisconfUpdate iDisconfUpdate) {
 
-        List<IDisconfUpdate> serviceList = null;
+        List<IDisconfUpdate> serviceList;
 
         if (inverseMap.containsKey(disconfKey)) {
             inverseMap.get(disconfKey).add(iDisconfUpdate);
@@ -200,12 +207,21 @@ public class ScanDynamicStoreAdapter {
 
     /**
      * 第二次扫描<br/>
+     * 转换 pipeline 回调函数，将其写到 仓库中
+     */
+    private static void transformPipelineService(IDisconfUpdatePipeline iDisconfUpdatePipeline) {
+
+        DisconfStorePipelineProcessor disconfStorePipelineProcessor = DisconfStoreProcessorFactory
+                .getDisconfStorePipelineProcessor();
+        disconfStorePipelineProcessor.setDisconfUpdatePipeline(iDisconfUpdatePipeline);
+    }
+
+    /**
+     * 第二次扫描<br/>
      * 转换 更新 回调函数，将其写到 仓库中
-     *
-     * @return
      */
     private static void transformUpdateService(Map<DisconfKey,
-                                                      List<IDisconfUpdate>> disconfUpdateServiceInverseIndexMap) {
+            List<IDisconfUpdate>> disconfUpdateServiceInverseIndexMap) {
 
         DisconfStoreProcessor disconfStoreProcessorFile = DisconfStoreProcessorFactory.getDisconfStoreFileProcessor();
         DisconfStoreProcessor disconfStoreProcessorItem = DisconfStoreProcessorFactory.getDisconfStoreItemProcessor();
@@ -224,8 +240,8 @@ public class ScanDynamicStoreAdapter {
                     }
 
                     disconfStoreProcessorFile.addUpdateCallbackList(disconfKey.getKey(),
-                                                                       disconfUpdateServiceInverseIndexMap
-                                                                           .get(disconfKey));
+                            disconfUpdateServiceInverseIndexMap
+                                    .get(disconfKey));
 
                 } else if (disconfKey.getDisConfigTypeEnum().equals(DisConfigTypeEnum.ITEM)) {
 
@@ -234,8 +250,8 @@ public class ScanDynamicStoreAdapter {
                     }
 
                     disconfStoreProcessorItem.addUpdateCallbackList(disconfKey.getKey(),
-                                                                       disconfUpdateServiceInverseIndexMap
-                                                                           .get(disconfKey));
+                            disconfUpdateServiceInverseIndexMap
+                                    .get(disconfKey));
                 }
 
             } catch (Exception e) {
@@ -250,19 +266,4 @@ public class ScanDynamicStoreAdapter {
         }
     }
 
-    /**
-     * 获取Spring Bean
-     *
-     * @return
-     */
-    private static IDisconfUpdate getSpringBean(Class<?> cls) throws Exception {
-
-        if (SpringContextUtil.getApplicationContext() == null) {
-            LOGGER.error("Spring Context is null. Cannot autowire " + cls.getCanonicalName());
-            return null;
-        }
-
-        // spring 方式
-        return (IDisconfUpdate) SpringContextUtil.getBean(cls);
-    }
 }

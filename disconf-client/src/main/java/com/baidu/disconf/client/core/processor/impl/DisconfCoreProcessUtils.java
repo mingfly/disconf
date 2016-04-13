@@ -7,8 +7,6 @@ import org.slf4j.LoggerFactory;
 
 import com.baidu.disconf.client.common.update.IDisconfUpdate;
 import com.baidu.disconf.client.store.DisconfStoreProcessor;
-import com.baidu.disconf.client.utils.MyBeanUtils;
-import com.baidu.disconf.client.utils.SpringContextUtil;
 
 /**
  * @author liaoqiqi
@@ -21,7 +19,8 @@ public class DisconfCoreProcessUtils {
     /**
      * 调用此配置影响的回调函数
      */
-    public static void callOneConf(DisconfStoreProcessor disconfStoreProcessor, String key) throws Exception {
+    public static void callOneConf(DisconfStoreProcessor disconfStoreProcessor,
+                                   String key) throws Exception {
 
         List<IDisconfUpdate> iDisconfUpdates = disconfStoreProcessor.getUpdateCallbackList(key);
 
@@ -36,6 +35,7 @@ public class DisconfCoreProcessUtils {
 
                 LOGGER.info("start to call " + iDisconfUpdate.getClass());
 
+                // set defined
                 try {
 
                     iDisconfUpdate.reload();
@@ -48,21 +48,4 @@ public class DisconfCoreProcessUtils {
         }
     }
 
-    /**
-     * 获取Spring Bean
-     *
-     * @return
-     */
-    public static Object getSpringBean(Class<?> cls) throws Exception {
-
-        if (SpringContextUtil.getApplicationContext() == null) {
-            LOGGER.error("Spring Context is null. Cannot autowire " + cls.getCanonicalName());
-            return null;
-        }
-
-        // spring 方式
-        Object object = SpringContextUtil.getBean(cls);
-
-        return MyBeanUtils.getTargetObject(object, cls);
-    }
 }

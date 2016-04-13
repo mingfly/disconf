@@ -62,8 +62,10 @@ public class ConfigReadController extends BaseController {
     @ResponseBody
     public JsonObjectBase getVersionList(@Valid VersionListForm versionListForm) {
 
+        LOG.info(versionListForm.toString());
+
         List<String> versionList =
-            configMgr.getVersionListByAppEnv(versionListForm.getAppId(), versionListForm.getEnvId());
+                configMgr.getVersionListByAppEnv(versionListForm.getAppId(), versionListForm.getEnvId());
 
         return buildListSuccess(versionList, versionList.size());
     }
@@ -78,6 +80,8 @@ public class ConfigReadController extends BaseController {
     @RequestMapping(value = "/list", method = RequestMethod.GET)
     @ResponseBody
     public JsonObjectBase getConfigList(@Valid ConfListForm confListForm) {
+
+        LOG.info(confListForm.toString());
 
         // 设置排序方式
         confListForm.getPage().setOrderBy(Columns.NAME);
@@ -98,6 +102,8 @@ public class ConfigReadController extends BaseController {
     @RequestMapping(value = "/simple/list", method = RequestMethod.GET)
     @ResponseBody
     public JsonObjectBase getSimpleConfigList(@Valid ConfListForm confListForm) {
+
+        LOG.info(confListForm.toString());
 
         // 设置排序方式
         confListForm.getPage().setOrderBy(Columns.NAME);
@@ -190,17 +196,19 @@ public class ConfigReadController extends BaseController {
     @RequestMapping(value = "/downloadfilebatch", method = RequestMethod.GET)
     public HttpEntity<byte[]> download2(@Valid ConfListForm confListForm) {
 
+        LOG.info(confListForm.toString());
+
         //
         // get files
         //
-        List<File> fileList = configMgr.getDisonfFileList(confListForm);
+        List<File> fileList = configMgr.getDisconfFileList(confListForm);
 
         //
         // prefix
         //
         String prefixString =
-            "APP" + confListForm.getAppId() + "_" + "ENV" + confListForm.getEnvId() + "_" + "VERSION" +
-                confListForm.getVersion();
+                "APP" + confListForm.getAppId() + "_" + "ENV" + confListForm.getEnvId() + "_" + "VERSION" +
+                        confListForm.getVersion();
 
         HttpHeaders header = new HttpHeaders();
 

@@ -8,8 +8,11 @@ import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationContext;
+import org.springframework.context.ApplicationContextAware;
 
 import com.baidu.disconf.client.DisconfMgr;
+import com.baidu.disconf.client.DisconfMgrBean;
 import com.baidu.disconf.client.core.DisconfCoreFactory;
 import com.baidu.disconf.client.core.DisconfCoreMgr;
 import com.baidu.disconf.client.core.impl.DisconfCoreMgrImpl;
@@ -17,12 +20,14 @@ import com.baidu.disconf.client.fetcher.FetcherFactory;
 import com.baidu.disconf.client.fetcher.FetcherMgr;
 import com.baidu.disconf.client.store.DisconfStoreProcessorFactory;
 import com.baidu.disconf.client.store.inner.DisconfCenterHostFilesStore;
+import com.baidu.disconf.client.support.registry.Registry;
 import com.baidu.disconf.client.test.common.BaseSpringMockTestCase;
 import com.baidu.disconf.client.test.model.ConfA;
 import com.baidu.disconf.client.test.model.ServiceA;
 import com.baidu.disconf.client.test.model.StaticConf;
 import com.baidu.disconf.client.test.scan.inner.ScanPackTestCase;
 import com.baidu.disconf.client.test.watch.mock.WatchMgrMock;
+import com.baidu.disconf.client.utils.StringUtil;
 import com.baidu.disconf.client.watch.WatchMgr;
 
 import mockit.Mock;
@@ -34,9 +39,12 @@ import mockit.MockUp;
  * @author liaoqiqi
  * @version 2014-6-10
  */
-public class DisconfMgrTestCase extends BaseSpringMockTestCase {
+public class DisconfMgrTestCase extends BaseSpringMockTestCase implements ApplicationContextAware {
 
     protected static final Logger LOGGER = LoggerFactory.getLogger(DisconfMgrTestCase.class);
+
+    // application context
+    private ApplicationContext applicationContext;
 
     @Autowired
     private ConfA confA;
@@ -53,7 +61,7 @@ public class DisconfMgrTestCase extends BaseSpringMockTestCase {
         new MockUp<DisconfCoreFactory>() {
 
             @Mock
-            public DisconfCoreMgr getDisconfCoreMgr() throws Exception {
+            public DisconfCoreMgr getDisconfCoreMgr(Registry registry) throws Exception {
 
                 FetcherMgr fetcherMgr = FetcherFactory.getFetcherMgr();
 
@@ -61,7 +69,9 @@ public class DisconfMgrTestCase extends BaseSpringMockTestCase {
                 final WatchMgr watchMgr = new WatchMgrMock().getMockInstance();
                 watchMgr.init("", "", true);
 
-                DisconfCoreMgr disconfCoreMgr = new DisconfCoreMgrImpl(watchMgr, fetcherMgr);
+                // registry
+                DisconfCoreMgr disconfCoreMgr = new DisconfCoreMgrImpl(watchMgr, fetcherMgr,
+                        registry);
 
                 return disconfCoreMgr;
             }
@@ -88,7 +98,10 @@ public class DisconfMgrTestCase extends BaseSpringMockTestCase {
             fileSet.add("atomserverl.properties");
             fileSet.add("atomserverm_slave.properties");
             DisconfCenterHostFilesStore.getInstance().addJustHostFileSet(fileSet);
-            DisconfMgr.start(ScanPackTestCase.SCAN_PACK_NAME);
+
+            DisconfMgr.getInstance().setApplicationContext(applicationContext);
+            DisconfMgr.getInstance().start(StringUtil.parseStringToStringList(ScanPackTestCase.SCAN_PACK_NAME,
+                    DisconfMgrBean.SCAN_SPLIT_TOKEN));
 
             //
             LOGGER.info(DisconfStoreProcessorFactory.getDisconfStoreFileProcessor().confToString());
@@ -107,7 +120,7 @@ public class DisconfMgrTestCase extends BaseSpringMockTestCase {
             LOGGER.info(String.valueOf("varAA: " + serviceA.getVarAA()));
             Assert.assertEquals(new Integer(1000).intValue(), serviceA.getVarAA());
 
-            LOGGER.info(String.valueOf("staticvar: " + StaticConf.getStaticvar()));
+            LOGGER.info(String.valueOf("static var: " + StaticConf.getStaticvar()));
             Assert.assertEquals(new Integer(50).intValue(), StaticConf.getStaticvar());
 
             LOGGER.info("================ AFTER DISCONF ==============================");
@@ -117,5 +130,14 @@ public class DisconfMgrTestCase extends BaseSpringMockTestCase {
             e.printStackTrace();
             Assert.assertTrue(false);
         }
+    }
+
+    public ApplicationContext getApplicationContext() {
+        return applicationContext;
+    }
+
+    @Override
+    public void setApplicationContext(ApplicationContext applicationContext) {
+        this.applicationContext = applicationContext;
     }
 }

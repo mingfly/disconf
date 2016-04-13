@@ -20,6 +20,7 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.baidu.disconf.core.common.constants.DisConfigTypeEnum;
+import com.baidu.disconf.web.common.Constants;
 import com.baidu.disconf.web.config.ApplicationPropertyConfig;
 import com.baidu.disconf.web.innerapi.zookeeper.ZooKeeperDriver;
 import com.baidu.disconf.web.service.app.bo.App;
@@ -28,12 +29,12 @@ import com.baidu.disconf.web.service.config.bo.Config;
 import com.baidu.disconf.web.service.config.dao.ConfigDao;
 import com.baidu.disconf.web.service.config.form.ConfListForm;
 import com.baidu.disconf.web.service.config.form.ConfNewItemForm;
+import com.baidu.disconf.web.service.config.service.ConfigHistoryMgr;
 import com.baidu.disconf.web.service.config.service.ConfigMgr;
 import com.baidu.disconf.web.service.config.vo.ConfListVo;
 import com.baidu.disconf.web.service.config.vo.MachineListVo;
 import com.baidu.disconf.web.service.env.bo.Env;
 import com.baidu.disconf.web.service.env.service.EnvMgr;
-import com.baidu.disconf.web.service.zookeeper.config.ZooConfig;
 import com.baidu.disconf.web.service.zookeeper.dto.ZkDisconfData;
 import com.baidu.disconf.web.service.zookeeper.dto.ZkDisconfData.ZkDisconfDataItem;
 import com.baidu.disconf.web.service.zookeeper.service.ZkDeployMgr;
@@ -71,9 +72,6 @@ public class ConfigMgrImpl implements ConfigMgr {
     private ZooKeeperDriver zooKeeperDriver;
 
     @Autowired
-    private ZooConfig zooConfig;
-
-    @Autowired
     private ZkDeployMgr zkDeployMgr;
 
     @Autowired
@@ -81,6 +79,9 @@ public class ConfigMgrImpl implements ConfigMgr {
 
     @Autowired
     private ApplicationPropertyConfig applicationPropertyConfig;
+
+    @Autowired
+    private ConfigHistoryMgr configHistoryMgr;
 
     /**
      * 根据APPid获取其版本列表
@@ -109,10 +110,10 @@ public class ConfigMgrImpl implements ConfigMgr {
      *
      * @return
      */
-    public List<File> getDisonfFileList(ConfListForm confListForm) {
+    public List<File> getDisconfFileList(ConfListForm confListForm) {
 
         List<Config> configList =
-            configDao.getConfigList(confListForm.getAppId(), confListForm.getEnvId(), confListForm.getVersion());
+                configDao.getConfigList(confListForm.getAppId(), confListForm.getEnvId(), confListForm.getVersion());
 
         // 时间作为当前文件夹
         String curTime = DateUtils.format(new Date(), DataFormatConstants.COMMON_TIME_FORMAT);
@@ -149,13 +150,12 @@ public class ConfigMgrImpl implements ConfigMgr {
         // 数据据结果
         //
         DaoPageResult<Config> configList = configDao.getConfigList(confListForm.getAppId(), confListForm.getEnvId(),
-                                                                      confListForm.getVersion(),
-                                                                      confListForm.getPage());
+                confListForm.getVersion(),
+                confListForm.getPage());
 
         //
         //
         //
-
         final App app = appMgr.getById(confListForm.getAppId());
         final Env env = envMgr.getById(confListForm.getEnvId());
 
@@ -173,37 +173,37 @@ public class ConfigMgrImpl implements ConfigMgr {
         // 进行转换
         //
         DaoPageResult<ConfListVo> configListVo =
-            ServiceUtil.getResult(configList, new DataTransfer<Config, ConfListVo>() {
+                ServiceUtil.getResult(configList, new DataTransfer<Config, ConfListVo>() {
 
-                @Override
-                public ConfListVo transfer(Config input) {
+                    @Override
+                    public ConfListVo transfer(Config input) {
 
-                    String appNameString = app.getName();
-                    String envName = env.getName();
+                        String appNameString = app.getName();
+                        String envName = env.getName();
 
-                    ZkDisconfData zkDisconfData = null;
-                    if (myzkDataMap != null && myzkDataMap.keySet().contains(input.getName())) {
-                        zkDisconfData = myzkDataMap.get(input.getName());
+                        ZkDisconfData zkDisconfData = null;
+                        if (myzkDataMap != null && myzkDataMap.keySet().contains(input.getName())) {
+                            zkDisconfData = myzkDataMap.get(input.getName());
+                        }
+                        ConfListVo configListVo = convert(input, appNameString, envName, zkDisconfData);
+
+                        // 列表操作不要显示值, 为了前端显示快速(只是内存里操作)
+                        if (!myFetchZk || !getErrorMessage) {
+
+                            // 列表 value 设置为 ""
+                            configListVo.setValue("");
+                            configListVo.setMachineList(new ArrayList<ZkDisconfData.ZkDisconfDataItem>());
+                        }
+
+                        return configListVo;
                     }
-                    ConfListVo configListVo = convert(input, appNameString, envName, zkDisconfData);
-
-                    // 列表操作不要显示值, 为了前端显示快速(只是内存里操作)
-                    if (!myFetchZk || !getErrorMessage) {
-
-                        // 列表 value 设置为 ""
-                        configListVo.setValue("");
-                        configListVo.setMachineList(new ArrayList<ZkDisconfData.ZkDisconfDataItem>());
-                    }
-
-                    return configListVo;
-                }
-            });
+                });
 
         return configListVo;
     }
 
     /**
-     *
+     * 获取ZK data
      */
     private MachineListVo getZkData(List<ZkDisconfDataItem> datalist, Config config) {
 
@@ -319,6 +319,7 @@ public class ConfigMgrImpl implements ConfigMgr {
 
                 } else {
 
+                    zkDataStr = zkDataStr.trim();
                     boolean isEqual = true;
 
                     if (MyStringUtils.isDouble(zkDataStr) && MyStringUtils.isDouble(valueInDb.toString())) {
@@ -336,7 +337,7 @@ public class ConfigMgrImpl implements ConfigMgr {
 
                     if (!isEqual) {
                         errorKeyList
-                            .add(keyInZk + "\t" + DiffUtils.getDiffSimple(zkDataStr, valueInDb.toString().trim()));
+                                .add(keyInZk + "\t" + DiffUtils.getDiffSimple(zkDataStr, valueInDb.toString().trim()));
                     }
                 }
 
@@ -383,7 +384,7 @@ public class ConfigMgrImpl implements ConfigMgr {
         }
 
         ZkDisconfData zkDisconfData = zkDeployMgr.getZkDisconfData(app.getName(), env.getName(), config.getVersion(),
-                                                                      disConfigTypeEnum, config.getName());
+                disConfigTypeEnum, config.getName());
 
         if (zkDisconfData == null) {
             return new MachineListVo();
@@ -416,6 +417,7 @@ public class ConfigMgrImpl implements ConfigMgr {
         // 配置数据库的值 encode to db
         //
         configDao.updateValue(configId, CodeUtils.utf8ToUnicode(value));
+        configHistoryMgr.createOne(configId, oldValue, CodeUtils.utf8ToUnicode(value));
 
         //
         // 发送邮件通知
@@ -423,12 +425,11 @@ public class ConfigMgrImpl implements ConfigMgr {
         String toEmails = appMgr.getEmails(config.getAppId());
 
         if (applicationPropertyConfig.isEmailMonitorOn() == true) {
-            boolean isSendSuccess = logMailBean.sendHtmlEmail(toEmails, " config update", DiffUtils.getDiff(CodeUtils
-                                                                                                                .unicodeToUtf8(oldValue),
-                                                                                                               value,
-                                                                                                               config
-                                                                                                                   .toString(),
-                                                                                                               getConfigUrlHtml(config)));
+            boolean isSendSuccess = logMailBean.sendHtmlEmail(toEmails,
+                    " config update", DiffUtils.getDiff(CodeUtils.unicodeToUtf8(oldValue),
+                            value,
+                            config.toString(),
+                            getConfigUrlHtml(config)));
             if (isSendSuccess) {
                 return "修改成功，邮件通知成功";
             } else {
@@ -440,15 +441,19 @@ public class ConfigMgrImpl implements ConfigMgr {
     }
 
     /**
+     * 主要用于邮箱发送
+     *
      * @return
      */
     private String getConfigUrlHtml(Config config) {
 
         return "<br/>点击<a href='http://" + applicationPropertyConfig.getDomain() + "/modifyFile.html?configId=" +
-                   config.getId() + "'> 这里 </a> 进入查看<br/>";
+                config.getId() + "'> 这里 </a> 进入查看<br/>";
     }
 
     /**
+     * 主要用于邮箱发送
+     *
      * @param newValue
      * @param identify
      *
@@ -475,13 +480,13 @@ public class ConfigMgrImpl implements ConfigMgr {
         if (confListVo.getTypeId().equals(DisConfigTypeEnum.FILE.getType())) {
 
             zooKeeperDriver.notifyNodeUpdate(confListVo.getAppName(), confListVo.getEnvName(), confListVo.getVersion(),
-                                                confListVo.getKey(), GsonUtils.toJson(confListVo.getValue()),
-                                                DisConfigTypeEnum.FILE);
+                    confListVo.getKey(), GsonUtils.toJson(confListVo.getValue()),
+                    DisConfigTypeEnum.FILE);
 
         } else {
 
             zooKeeperDriver.notifyNodeUpdate(confListVo.getAppName(), confListVo.getEnvName(), confListVo.getVersion(),
-                                                confListVo.getKey(), confListVo.getValue(), DisConfigTypeEnum.ITEM);
+                    confListVo.getKey(), confListVo.getValue(), DisConfigTypeEnum.ITEM);
         }
 
     }
@@ -508,6 +513,7 @@ public class ConfigMgrImpl implements ConfigMgr {
         config.setType(disConfigTypeEnum.getType());
         config.setVersion(confNewForm.getVersion());
         config.setValue(CodeUtils.utf8ToUnicode(confNewForm.getValue()));
+        config.setStatus(Constants.STATUS_NORMAL);
 
         // 时间
         String curTime = DateUtils.format(new Date(), DataFormatConstants.COMMON_TIME_FORMAT);
@@ -515,22 +521,29 @@ public class ConfigMgrImpl implements ConfigMgr {
         config.setUpdateTime(curTime);
 
         configDao.create(config);
+        configHistoryMgr.createOne(config.getId(), "", config.getValue());
 
         // 发送邮件通知
         //
         String toEmails = appMgr.getEmails(config.getAppId());
-
         if (applicationPropertyConfig.isEmailMonitorOn() == true) {
             logMailBean.sendHtmlEmail(toEmails, " config new", getNewValue(confNewForm.getValue(), config.toString(),
-                                                                              getConfigUrlHtml(config)));
+                    getConfigUrlHtml(config)));
         }
-
     }
 
+    /**
+     * 删除配置
+     *
+     * @param configId
+     */
     @Override
     public void delete(Long configId) {
 
-        configDao.delete(configId);
+        Config config = configDao.get(configId);
+        configHistoryMgr.createOne(configId, config.getValue(), "");
+
+        configDao.deleteItem(configId);
     }
 
 }

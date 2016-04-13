@@ -1,12 +1,13 @@
-/*
- * Copyright (C) 2015 KNIGHT, Inc. All Rights Reserved.
- */
 package com.baidu.disconf.client.scan.inner.statically.strategy.impl;
 
 import java.lang.reflect.Method;
+import java.net.URL;
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -28,6 +29,7 @@ import com.baidu.disconf.client.common.annotations.DisconfFileItem;
 import com.baidu.disconf.client.common.annotations.DisconfItem;
 import com.baidu.disconf.client.common.annotations.DisconfUpdateService;
 import com.baidu.disconf.client.common.constants.Constants;
+import com.baidu.disconf.client.common.update.IDisconfUpdatePipeline;
 import com.baidu.disconf.client.scan.inner.common.ScanVerify;
 import com.baidu.disconf.client.scan.inner.statically.model.ScanStaticModel;
 import com.baidu.disconf.client.scan.inner.statically.strategy.ScanStaticStrategy;
@@ -46,14 +48,12 @@ public class ReflectionScanStatic implements ScanStaticStrategy {
 
     /**
      * 扫描想要的类
-     *
-     * @return
      */
     @Override
-    public ScanStaticModel scan(String packName) {
+    public ScanStaticModel scan(List<String> packNameList) {
 
         // 基本信息
-        ScanStaticModel scanModel = scanBasicInfo(packName);
+        ScanStaticModel scanModel = scanBasicInfo(packNameList);
 
         // 分析
         analysis(scanModel);
@@ -63,35 +63,44 @@ public class ReflectionScanStatic implements ScanStaticStrategy {
 
     /**
      * 通过扫描，获取反射对象
-     *
-     * @param packName
-     *
-     * @return
      */
-    private Reflections getReflection(String packName) {
+    private Reflections getReflection(List<String> packNameList) {
 
-        Predicate<String> filter =
-            new FilterBuilder().includePackage(Constants.DISCONF_PACK_NAME).includePackage(packName);
+        //
+        // filter
+        //
+        FilterBuilder filterBuilder = new FilterBuilder().includePackage(Constants.DISCONF_PACK_NAME);
+
+        for (String packName : packNameList) {
+            filterBuilder = filterBuilder.includePackage(packName);
+        }
+        Predicate<String> filter = filterBuilder;
+
+        //
+        // urls
+        //
+        Collection<URL> urlTotals = new ArrayList<URL>();
+        for (String packName : packNameList) {
+            Set<URL> urls = ClasspathHelper.forPackage(packName);
+            urlTotals.addAll(urls);
+        }
 
         //
         Reflections reflections = new Reflections(new ConfigurationBuilder().filterInputsBy(filter)
-                                                      .setScanners(new SubTypesScanner().filterResultsBy(filter),
-                                                                      new TypeAnnotationsScanner()
-                                                                          .filterResultsBy(filter),
-                                                                      new FieldAnnotationsScanner()
-                                                                          .filterResultsBy(filter),
-                                                                      new MethodAnnotationsScanner()
-                                                                          .filterResultsBy(filter),
-                                                                      new MethodParameterScanner())
-                                                      .setUrls(ClasspathHelper.forPackage(packName)));
+                .setScanners(new SubTypesScanner().filterResultsBy(filter),
+                        new TypeAnnotationsScanner()
+                                .filterResultsBy(filter),
+                        new FieldAnnotationsScanner()
+                                .filterResultsBy(filter),
+                        new MethodAnnotationsScanner()
+                                .filterResultsBy(filter),
+                        new MethodParameterScanner()).setUrls(urlTotals));
 
         return reflections;
     }
 
     /**
      * 分析出一些关系 出来
-     *
-     * @param scanModel
      */
     private void analysis(ScanStaticModel scanModel) {
 
@@ -101,8 +110,6 @@ public class ReflectionScanStatic implements ScanStaticStrategy {
 
     /**
      * 分析出配置文件与配置文件中的Field的Method的MAP
-     *
-     * @param scanModel
      */
     private void analysis4DisconfFile(ScanStaticModel scanModel) {
 
@@ -132,8 +139,9 @@ public class ReflectionScanStatic implements ScanStaticStrategy {
             } else {
 
                 LOGGER
-                    .error("cannot find CLASS ANNOTATION " + DisconfFile.class.getName() + " for disconf file item: " +
-                               method.toString());
+                        .error("cannot find CLASS ANNOTATION " + DisconfFile.class.getName()
+                                + " for disconf file item: " +
+                                method.toString());
             }
         }
 
@@ -152,7 +160,7 @@ public class ReflectionScanStatic implements ScanStaticStrategy {
             }
 
             // 校验配置文件类型是否合适(目前只支持.properties类型)
-            DisconfFile disconfFile = (DisconfFile) classFile.getAnnotation(DisconfFile.class);
+            DisconfFile disconfFile = classFile.getAnnotation(DisconfFile.class);
             boolean fileTypeRight = ScanVerify.isDisconfFileTypeRight(disconfFile);
             if (!fileTypeRight) {
                 LOGGER.warn("now do not support this file type" + disconfFile.toString());
@@ -166,17 +174,15 @@ public class ReflectionScanStatic implements ScanStaticStrategy {
 
     /**
      * 扫描基本信息
-     *
-     * @return
      */
-    private ScanStaticModel scanBasicInfo(String packName) {
+    private ScanStaticModel scanBasicInfo(List<String> packNameList) {
 
         ScanStaticModel scanModel = new ScanStaticModel();
 
         //
         // 扫描对象
         //
-        Reflections reflections = getReflection(packName);
+        Reflections reflections = getReflection(packNameList);
         scanModel.setReflections(reflections);
 
         //
@@ -208,6 +214,15 @@ public class ReflectionScanStatic implements ScanStaticStrategy {
         //
         classdata = reflections.getTypesAnnotatedWith(DisconfUpdateService.class);
         scanModel.setDisconfUpdateService(classdata);
+
+        // update pipeline
+        Set<Class<? extends IDisconfUpdatePipeline>> iDisconfUpdatePipeline = reflections.getSubTypesOf
+                (IDisconfUpdatePipeline
+                        .class);
+        if (iDisconfUpdatePipeline != null && iDisconfUpdatePipeline.size() != 0) {
+            scanModel.setiDisconfUpdatePipeline((Class<IDisconfUpdatePipeline>) iDisconfUpdatePipeline
+                    .toArray()[0]);
+        }
 
         return scanModel;
     }

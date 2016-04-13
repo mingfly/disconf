@@ -17,8 +17,6 @@ public class FetcherFactory {
 
     /**
      * 获取抓取器实例，记得释放资源, 它依赖Conf模块
-     *
-     * @return
      */
     public static FetcherMgr getFetcherMgr() throws Exception {
 
@@ -30,11 +28,12 @@ public class FetcherFactory {
         RestfulMgr restfulMgr = RestfulFactory.getRestfulMgrNomal();
 
         FetcherMgr fetcherMgr =
-            new FetcherMgrImpl(restfulMgr, DisClientConfig.getInstance().CONF_SERVER_URL_RETRY_TIMES,
-                                  DisClientConfig.getInstance().CONF_SERVER_URL_RETRY_SLEEP_SECONDS,
-                                  DisClientSysConfig.getInstance().ENABLE_LOCAL_DOWNLOAD_DIR_IN_CLASS_PATH,
-                                  DisClientSysConfig.getInstance().LOCAL_DOWNLOAD_DIR,
-                                  DisClientConfig.getInstance().getHostList());
+                new FetcherMgrImpl(restfulMgr, DisClientConfig.getInstance().CONF_SERVER_URL_RETRY_TIMES,
+                        DisClientConfig.getInstance().confServerUrlRetrySleepSeconds,
+                        DisClientConfig.getInstance().enableLocalDownloadDirInClassPath,
+                        DisClientConfig.getInstance().userDefineDownloadDir,
+                        DisClientSysConfig.getInstance().LOCAL_DOWNLOAD_DIR,
+                        DisClientConfig.getInstance().getHostList());
 
         return fetcherMgr;
     }

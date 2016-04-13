@@ -12,7 +12,7 @@ import com.baidu.disconf.core.common.constants.Constants;
 import com.baidu.disconf.core.common.json.ValueVo;
 import com.baidu.disconf.core.common.restful.RestfulMgr;
 import com.baidu.disconf.core.common.restful.core.RemoteUrl;
-import com.github.knightliao.apollo.utils.io.OsUtil;
+import com.baidu.disconf.core.common.utils.OsUtil;
 
 /**
  * 抓取器, 独立模块，不依赖外部模块, 由Factory来管理此实例
@@ -34,7 +34,10 @@ public class FetcherMgrImpl implements FetcherMgr {
     private boolean enableLocalDownloadDirInClassPath = true;
 
     // 下载文件夹, 远程文件下载后会放在这里
-    private String localDownloadDir = "./disconf/download";
+    private String localDownloadDir;
+
+    // temp 临时目录
+    private String localDownloadDirTemp;
 
     //
     private List<String> hostList = new ArrayList<String>();
@@ -46,7 +49,9 @@ public class FetcherMgrImpl implements FetcherMgr {
     // 创建对象
     //
     public FetcherMgrImpl(RestfulMgr restfulMgr, int retryTime, int retrySleepSeconds,
-                          boolean enableLocalDownloadDirInClassPath, String localDownloadDir, List<String> hostList) {
+                          boolean enableLocalDownloadDirInClassPath, String localDownloadDir, String
+                                  localDownloadDirTemp, List<String>
+                                  hostList) {
 
         this.restfulMgr = restfulMgr;
 
@@ -54,6 +59,7 @@ public class FetcherMgrImpl implements FetcherMgr {
         this.retryTime = retryTime;
         this.enableLocalDownloadDirInClassPath = enableLocalDownloadDirInClassPath;
         this.localDownloadDir = localDownloadDir;
+        this.localDownloadDirTemp = localDownloadDirTemp;
         OsUtil.makeDirs(this.localDownloadDir);
 
         this.hostList = hostList;
@@ -61,10 +67,6 @@ public class FetcherMgrImpl implements FetcherMgr {
 
     /**
      * 根据 URL 从远程 获取Value值
-     *
-     * @param url
-     *
-     * @return
      */
     public String getValueFromServer(String url) throws Exception {
 
@@ -84,65 +86,39 @@ public class FetcherMgrImpl implements FetcherMgr {
     /**
      * 下载配置文件, remoteUrl是 url
      *
-     * @param url
-     * @param fileName
-     *
-     * @return
-     *
      * @throws Exception
      */
-    public String downloadFileFromServer(String url, String fileName) throws Exception {
+    public String downloadFileFromServer(String url, String fileName, String targetFileDir) throws Exception {
 
         // 下载的路径
-        String localDir = getLocalDownloadDirPath(false);
+        String localDir = getLocalDownloadDirPath();
 
         // 设置远程地址
         RemoteUrl remoteUrl = new RemoteUrl(url, hostList);
 
         // 下载
         return restfulMgr
-                   .downloadFromServer(remoteUrl, fileName, localDir, this.enableLocalDownloadDirInClassPath, retryTime,
-                                          retrySleepSeconds);
+                .downloadFromServer(remoteUrl, fileName, localDir, localDownloadDirTemp, targetFileDir,
+                        enableLocalDownloadDirInClassPath,
+                        retryTime,
+                        retrySleepSeconds);
+
     }
 
     /**
      * 获取本地下载的路径DIR, 通过参数判断是否是临时路径
      *
-     * @param isTmp
-     *
-     * @return
-     *
      * @throws Exception
      */
-    private String getLocalDownloadDirPath(boolean isTmp) throws Exception {
+    private String getLocalDownloadDirPath() throws Exception {
 
-        String localUrl = getDownloadTmpDir();
-
-        if (!isTmp) {
-            localUrl = localDownloadDir;
-        }
+        String localUrl = localDownloadDir;
 
         if (!new File(localUrl).exists()) {
             new File(localUrl).mkdirs();
         }
 
         return localUrl;
-    }
-
-    /**
-     * @return String
-     *
-     * @Description: 获取下载的临时文件夹
-     * @author liaoqiqi
-     * @date 2013-6-14
-     */
-    private String getDownloadTmpDir() {
-
-        String tempDir = OsUtil.pathJoin(localDownloadDir, "tmp");
-
-        OsUtil.makeDirs(tempDir);
-
-        return tempDir;
     }
 
     @Override

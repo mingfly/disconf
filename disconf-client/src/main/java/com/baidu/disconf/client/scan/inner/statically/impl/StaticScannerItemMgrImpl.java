@@ -48,8 +48,6 @@ public class StaticScannerItemMgrImpl extends StaticScannerMgrImplBase implement
 
     /**
      * 转换配置项
-     *
-     * @return
      */
     private static List<DisconfCenterBaseModel> getDisconfItems(ScanStaticModel scanModel) {
 
@@ -70,8 +68,6 @@ public class StaticScannerItemMgrImpl extends StaticScannerMgrImplBase implement
 
     /**
      * 转换配置项
-     *
-     * @return
      */
     private static DisconfCenterItem transformScanItem(Method method) {
 
@@ -95,6 +91,10 @@ public class StaticScannerItemMgrImpl extends StaticScannerMgrImplBase implement
 
         // 去掉空格
         String key = disconfItem.key().replace(" ", "");
+
+        // get setter method
+        Method setterMethod = MethodUtils.getSetterMethodFromField(cls, field);
+        disconfCenterItem.setSetMethod(setterMethod);
 
         // field
         disconfCenterItem.setField(field);
@@ -127,10 +127,10 @@ public class StaticScannerItemMgrImpl extends StaticScannerMgrImplBase implement
 
         // Disconf-web url
         String url = DisconfWebPathMgr.getRemoteUrlParameter(DisClientSysConfig.getInstance().CONF_SERVER_STORE_ACTION,
-                                                                disConfCommonModel.getApp(),
-                                                                disConfCommonModel.getVersion(),
-                                                                disConfCommonModel.getEnv(), key,
-                                                                DisConfigTypeEnum.ITEM);
+                disConfCommonModel.getApp(),
+                disConfCommonModel.getVersion(),
+                disConfCommonModel.getEnv(), key,
+                DisConfigTypeEnum.ITEM);
         disconfCenterItem.setRemoteServerUrl(url);
 
         return disconfCenterItem;

@@ -8,7 +8,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.baidu.disconf.core.common.restful.core.UnreliableInterface;
-import com.github.knightliao.apollo.utils.io.OsUtil;
+import com.baidu.disconf.core.common.utils.OsUtil;
 
 /**
  * 下载文件
@@ -38,7 +38,7 @@ public class FetchConfFile implements UnreliableInterface {
      * 进行下载
      */
     @Override
-    public Object call() throws Exception {
+    public <T> T call() throws Exception {
 
         // 删除临时文件
         // LOGGER.info("start to remove tmp download file: " + ""

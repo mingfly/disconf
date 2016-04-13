@@ -2,6 +2,7 @@ package com.baidu.disconf.client.utils;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.util.Set;
 
 import org.apache.commons.lang.StringUtils;
 import org.slf4j.Logger;
@@ -10,7 +11,6 @@ import org.slf4j.LoggerFactory;
 import com.baidu.disconf.client.common.annotations.DisconfFileItem;
 import com.baidu.disconf.client.common.annotations.DisconfItem;
 import com.baidu.disconf.core.common.constants.DisConfigTypeEnum;
-import com.github.knightliao.apollo.utils.common.ClassUtils;
 
 /**
  * @author liaoqiqi
@@ -22,22 +22,20 @@ public class MethodUtils {
 
     /**
      * 对于一个 get/is 方法，返回其相对应的Field
-     *
-     * @return
      */
     public static Field getFieldFromMethod(Method method, Field[] expectedFields, DisConfigTypeEnum disConfigTypeEnum) {
 
-        String fieldName = null;
+        String fieldName;
 
         if (disConfigTypeEnum.equals(DisConfigTypeEnum.FILE)) {
 
             DisconfFileItem disconfFileItem = method.getAnnotation(DisconfFileItem.class);
-
             // 根据用户设定的注解来获取
             fieldName = disconfFileItem.associateField();
-        } else {
-            DisconfItem disItem = method.getAnnotation(DisconfItem.class);
 
+        } else {
+
+            DisconfItem disItem = method.getAnnotation(DisconfItem.class);
             // 根据用户设定的注解来获取
             fieldName = disItem.associateField();
         }
@@ -62,4 +60,23 @@ public class MethodUtils {
 
         return null;
     }
+
+    /**
+     *
+     */
+    public static Method getSetterMethodFromField(Class<?> curClass, Field field) {
+
+        String fieldName = field.getName().toLowerCase();
+
+        Set<Method> methods = ClassUtils.getAllMethod(curClass);
+        for (Method method : methods) {
+            if (method.getName().toLowerCase().equals("set" + fieldName) || method.getName().toLowerCase().equals("is" +
+                    fieldName)) {
+                return method;
+            }
+        }
+
+        return null;
+    }
+
 }
